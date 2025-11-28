@@ -27,7 +27,10 @@ export async function extractBill(documentUrl) {
     console.log(`🔍 Performing OCR on ${imagePaths.length} page(s)...`);
     const ocrResults = await extractTextFromPages(imagePaths);
     
-    console.log("ocrResults----> ", ocrResults);
+    // Log OCR results for debugging (first 500 chars to avoid huge logs)
+    ocrResults.forEach((result, idx) => {
+      console.log(`OCR Page ${idx + 1} (confidence: ${result.confidence}):`, result.text.substring(0, 500));
+    });
     if (ocrResults.length === 0) {
       throw new Error('No text extracted from document');
     }

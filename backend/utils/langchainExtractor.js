@@ -21,9 +21,12 @@ export async function extractBillItemsFromText(ocrText, pageNumber, tokenTracker
     // This doesn't use LLM, so no tokens are consumed
     const parsedTableItems = parseTableRows(ocrText);
     if (parsedTableItems.length > 0) {
-      console.log(`Using tableParser for page ${pageNumber} - no LLM tokens used`);
+      console.log(`Using tableParser for page ${pageNumber} - found ${parsedTableItems.length} items, no LLM tokens used`);
       return { bill_items: parsedTableItems, tokenUsage: null };
     }
+    
+    // Log when tableParser fails so we know LLM will be used
+    console.log(`TableParser found 0 items for page ${pageNumber}, falling back to LLM extraction`);
 
     // Define the output schema
     const outputSchema = z.object({
@@ -41,19 +44,21 @@ Extract ALL line items from the following bill text. For each item, identify:
 - item_name: The name/description of the service or item
 - item_rate: The rate/price per unit
 - item_quantity: The quantity (default to 1.0 if not specified)
-- item_amount: The total amount for this line item (rate × quantity)
+- item_amount: The total amount for this line item (prefer Net Amt/Gross Amount if shown, otherwise rate × quantity)
 
 Important rules:
-1. Extract EVERY line item, including consultations, tests, procedures, charges, etc.
+1. Extract EVERY line item, including consultations, tests, procedures, charges, medicines, etc.
 2. If quantity is not mentioned, assume 1.0
-3. Calculate item_amount = item_rate × item_quantity
-4. Do NOT include totals, subtotals, or summary lines
-5. Do NOT duplicate items
-6. Preserve exact item names as they appear
-7. When the text shows tabular columns like "Qty | Rate | Gross Amount", always use those numbers.
-8. Never default to quantity 1.0 if a numeric quantity column exists in the row.
-9. Prefer the \"Gross Amount\" column for item_amount values in tables.
-10. All numeric outputs must include decimals (e.g., 14.00).
+3. Prefer the actual "Net Amt" or "Gross Amount" column value for item_amount over calculated values
+4. If Net Amt/Gross Amount is not available, calculate item_amount = item_rate × item_quantity
+5. Do NOT include totals, subtotals, category headers, or summary lines
+6. Do NOT duplicate items
+7. Preserve exact item names as they appear in the bill
+8. When the text shows tabular columns like "Qty/Hrs | Rate | Discount | Net Amt", extract ALL columns correctly
+9. Never default to quantity 1.0 if a numeric quantity column exists in the row
+10. All numeric outputs must include decimals (e.g., 14.00, 32.00)
+11. Look for patterns like: Description followed by Qty, Rate, and Amount columns
+12. Even if OCR text is messy or has errors, try to extract all visible line items
 
 OCR Text from Page {pageNumber}:
 {ocrText}
@@ -134,13 +139,29 @@ OCR Text from Page {pageNumber}:
       console.log(`⚠️ No token usage captured for page ${pageNumber} - check LLM response structure`);
     }
 
-    // Get the actual result
-    const result = response.bill_items ? response : (response.output || response);
+    // Get the actual result - handle different response structures
+    let result = response;
+    
+    // Check if response has bill_items directly
+    if (response.bill_items) {
+      result = response;
+    } else if (response.output && response.output.bill_items) {
+      result = response.output;
+    } else if (typeof response === 'object' && 'bill_items' in response) {
+      result = response;
+    } else {
+      // Try to extract from nested structure
+      console.warn(`Unexpected response structure for page ${pageNumber}:`, Object.keys(response));
+      result = { bill_items: [] };
+    }
 
     // Validate and return
     if (!result.bill_items || !Array.isArray(result.bill_items)) {
+      console.warn(`No bill_items found in LLM response for page ${pageNumber}`);
       return { bill_items: [], tokenUsage };
     }
+    
+    console.log(`LLM extracted ${result.bill_items.length} items for page ${pageNumber}`);
 
     // Validate each item and format numbers
     const validatedItems = result.bill_items.map(item => {
