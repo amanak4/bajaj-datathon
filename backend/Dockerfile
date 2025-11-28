@@ -1,7 +1,7 @@
 # Use Node.js official image
 FROM node:22-slim
 
-# Install Poppler utilities (required for pdf-poppler)
+# Install Poppler utilities (required for pdftoppm command)
 RUN apt-get update && apt-get install -y \
     poppler-utils \
     && rm -rf /var/lib/apt/lists/*

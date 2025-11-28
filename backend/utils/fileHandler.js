@@ -2,8 +2,11 @@ import axios from 'axios';
 import fs from 'fs-extra';
 import path from 'path';
 import { fileURLToPath } from 'url';
-import pdfPoppler from 'pdf-poppler';
+import { exec } from 'child_process';
+import { promisify } from 'util';
 import sharp from 'sharp';
+
+const execAsync = promisify(exec);
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -57,40 +60,55 @@ export function detectFileType(filePath) {
 }
 
 /**
- * Convert PDF to images using pdf-poppler
- * Note: Requires Poppler to be installed on the system
+ * Convert PDF to images using pdftoppm (Poppler utility)
+ * Uses system command directly - works on Linux/Docker
  */
 export async function pdfToImages(pdfPath, outputDir) {
   try {
-    const options = {
-      format: 'png',
-      out_dir: outputDir,
-      out_prefix: 'page',
-      page: null // Convert all pages
-    };
-
-    await pdfPoppler.convert(pdfPath, options);
+    // Use pdftoppm command directly (Poppler utility)
+    // -png: output format
+    // -r 200: resolution (200 DPI)
+    // output prefix: page
+    const outputPrefix = path.join(outputDir, 'page');
+    
+    // Run pdftoppm command
+    const command = `pdftoppm -png -r 200 "${pdfPath}" "${outputPrefix}"`;
+    
+    try {
+      const { stdout, stderr } = await execAsync(command);
+      
+      if (stderr && !stderr.includes('Writing')) {
+        console.warn('pdftoppm stderr:', stderr);
+      }
+    } catch (execError) {
+      // Check if pdftoppm is available
+      if (execError.message.includes('pdftoppm') || execError.message.includes('command not found')) {
+        throw new Error('pdftoppm command not found. Please ensure Poppler is installed: apt-get install -y poppler-utils');
+      }
+      throw execError;
+    }
     
     // Wait a bit for files to be written
-    await new Promise(resolve => setTimeout(resolve, 500));
+    await new Promise(resolve => setTimeout(resolve, 1000));
     
     // Get all generated images
     const files = fs.readdirSync(outputDir)
-      .filter(file => file.startsWith('page') && file.endsWith('.png'))
+      .filter(file => file.startsWith('page') && (file.endsWith('.png') || /page-\d+\.png/.test(file)))
       .sort((a, b) => {
+        // Extract page number from filename (page-1.png, page-2.png, etc.)
         const numA = parseInt(a.match(/\d+/)?.[0] || '0');
         const numB = parseInt(b.match(/\d+/)?.[0] || '0');
         return numA - numB;
       });
 
     if (files.length === 0) {
-      throw new Error('No images generated from PDF. Please ensure Poppler is installed.');
+      throw new Error('No images generated from PDF. Please ensure Poppler is installed and pdftoppm is available.');
     }
 
     return files.map(file => path.join(outputDir, file));
   } catch (error) {
-    if (error.message.includes('poppler') || error.message.includes('Poppler') || error.message.includes('linux is NOT supported')) {
-      throw new Error(`PDF conversion failed. Poppler must be installed. For Render deployment, add this to build command: apt-get update && apt-get install -y poppler-utils`);
+    if (error.message.includes('pdftoppm') || error.message.includes('command not found')) {
+      throw new Error(`PDF conversion failed. Poppler must be installed. Error: ${error.message}`);
     }
     throw new Error(`Failed to convert PDF to images: ${error.message}`);
   }
