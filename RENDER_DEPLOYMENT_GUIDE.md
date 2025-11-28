@@ -63,19 +63,25 @@ Fill in the following:
 - **Region**: Choose closest to your users (e.g., `Oregon (US West)`)
 - **Branch**: `main` (or your default branch)
 - **Root Directory**: `backend` ⚠️ **IMPORTANT: Set this to `backend`**
-- **Runtime**: `Node`
-- **Build Command**: (See Step 3.2 below)
-- **Start Command**: `npm start`
+- **Runtime**: `Docker` ⚠️ **IMPORTANT: Select Docker (not Node)**
+- **Dockerfile Path**: `backend/Dockerfile` (or just `Dockerfile` if root directory is `backend`)
+- **Build Command**: Leave empty (Docker handles this)
+- **Start Command**: Leave empty (Docker handles this)
 
 ### 3.2 Build Command
 
-**Copy and paste this exact command:**
+**Option 1: Using Docker (Recommended)**
 
+Leave Build Command **empty** - Render will use the Dockerfile automatically.
+
+**Option 2: Without Docker**
+
+If not using Docker, use:
 ```bash
-apt-get update && apt-get install -y poppler-utils && npm install
+npm install
 ```
 
-This installs Poppler (required for PDF processing) before installing npm packages.
+⚠️ **Note**: Without Docker, PDF processing won't work. Use Docker for full functionality.
 
 ### 3.3 Start Command
 
