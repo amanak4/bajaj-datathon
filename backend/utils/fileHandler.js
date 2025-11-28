@@ -57,11 +57,11 @@ export function detectFileType(filePath) {
 }
 
 /**
- * Convert PDF to images
+ * Convert PDF to images using pdf-poppler
+ * Note: Requires Poppler to be installed on the system
  */
 export async function pdfToImages(pdfPath, outputDir) {
   try {
-    // Check if poppler is available
     const options = {
       format: 'png',
       out_dir: outputDir,
@@ -89,8 +89,8 @@ export async function pdfToImages(pdfPath, outputDir) {
 
     return files.map(file => path.join(outputDir, file));
   } catch (error) {
-    if (error.message.includes('poppler') || error.message.includes('Poppler')) {
-      throw new Error(`PDF conversion failed. Please install Poppler: ${error.message}`);
+    if (error.message.includes('poppler') || error.message.includes('Poppler') || error.message.includes('linux is NOT supported')) {
+      throw new Error(`PDF conversion failed. Poppler must be installed. For Render deployment, add this to build command: apt-get update && apt-get install -y poppler-utils`);
     }
     throw new Error(`Failed to convert PDF to images: ${error.message}`);
   }
